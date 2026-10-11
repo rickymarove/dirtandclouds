@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import Hero from '../entities/Hero.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -50,8 +51,19 @@ export default class GameScene extends Phaser.Scene {
     this.ground.body.setSize(2400, 120);
     this.ground.body.setOffset(0, 0);
 
-    // 5. Temporary camera scrolling test (removed in Part C when hero is added)
-    this.setupTestCameraControls();
+    // 5. Input keys (A, D, Space)
+    this.keys = this.input.keyboard.addKeys({
+      left: Phaser.Input.Keyboard.KeyCodes.A,
+      right: Phaser.Input.Keyboard.KeyCodes.D,
+      space: Phaser.Input.Keyboard.KeyCodes.SPACE
+    });
+
+    // 6. Hero entity (Depth 10, standing on dirt at x = 100)
+    this.hero = new Hero(this, 100, 480);
+    this.physics.add.collider(this.hero.sprite, this.ground);
+
+    // 7. Camera follow with light smoothing
+    this.cameras.main.startFollow(this.hero.sprite, true, 0.08, 0.08);
   }
 
   update(time, delta) {
@@ -63,24 +75,7 @@ export default class GameScene extends Phaser.Scene {
       }
     });
 
-    // Temporary camera controls update (removed in Part C)
-    this.updateTestCameraControls(delta);
-  }
-
-  // --- Temporary Camera Test Controls (Part B only) ---
-  setupTestCameraControls() {
-    this.testKeys = this.input.keyboard.addKeys({
-      left: Phaser.Input.Keyboard.KeyCodes.A,
-      right: Phaser.Input.Keyboard.KeyCodes.D
-    });
-  }
-
-  updateTestCameraControls(delta) {
-    const scrollSpeed = 400; // px/sec
-    if (this.testKeys.right.isDown) {
-      this.cameras.main.scrollX += scrollSpeed * (delta / 1000);
-    } else if (this.testKeys.left.isDown) {
-      this.cameras.main.scrollX -= scrollSpeed * (delta / 1000);
-    }
+    // Update hero controls and physics
+    this.hero.update(this.keys, delta);
   }
 }

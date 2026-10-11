@@ -9,6 +9,7 @@ export default class BootScene extends Phaser.Scene {
     this.createDirtTexture();
     this.createCloudTexture();
     this.createTreeTexture();
+    this.createHeroTexture();
 
     this.scene.start('GameScene');
   }
@@ -81,5 +82,40 @@ export default class BootScene extends Phaser.Scene {
 
     g.generateTexture('tree', 80, 130);
     g.destroy();
+  }
+
+  createHeroTexture() {
+    const data = [
+      '....HHHH....',
+      '...HHHHHH...',
+      '...HHSSHH...',
+      '...SESSES...',
+      '...SSSSSS...',
+      '....SSSS....',
+      '..BBBBBBBB..',
+      '.BBBBBBBBBB.',
+      '.BBBBBBBBBB.',
+      '.SSBBBBBBSS.',
+      '...PPPPPP...',
+      '...PPPPPP...',
+      '...PP..PP...',
+      '...PP..PP...',
+      '...FF..FF...',
+      '..FFF..FFF..'
+    ];
+
+    this.textures.generate('hero', {
+      data,
+      pixelWidth: 4,
+      pixelHeight: 4,
+      palette: {
+        H: '#3e2723',
+        S: '#f7c59f',
+        E: '#1a1a1a',
+        B: '#1976d2',
+        P: '#263238',
+        F: '#111111'
+      }
+    });
   }
 }
