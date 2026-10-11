@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { FIGHT_CONFIG } from '../data/fightConfig.js';
 
 export default class Hero {
   constructor(scene, x, y) {
@@ -14,6 +15,19 @@ export default class Hero {
     // Initialized to true so there is no landing squash on spawn
     this.wasOnGround = true;
     this.walkTimer = 0;
+
+    // Combat state for Part E
+    this.health = FIGHT_CONFIG.heroMaxHealth;
+    this.isStunned = false;
+    this.punchCooldown = false;
+  }
+
+  get x() {
+    return this.sprite.x;
+  }
+
+  get y() {
+    return this.sprite.y;
   }
 
   update(keys, delta) {
@@ -60,5 +74,63 @@ export default class Hero {
     }
 
     this.wasOnGround = onGround;
+  }
+
+  updateFight(keys, delta, villainX) {
+    // If not stunned, handle movement input (jump disabled)
+    if (!this.isStunned) {
+      if (keys.left.isDown) {
+        this.sprite.setVelocityX(-FIGHT_CONFIG.heroSpeed);
+      } else if (keys.right.isDown) {
+        this.sprite.setVelocityX(FIGHT_CONFIG.heroSpeed);
+      } else {
+        this.sprite.setVelocityX(0);
+      }
+
+      // Always face villain (right)
+      this.sprite.setFlipX(false);
+    }
+
+    // Clamp position every frame (including while stunned) to arena boundaries & separation
+    this.sprite.x = Phaser.Math.Clamp(
+      this.sprite.x,
+      FIGHT_CONFIG.arenaMinX,
+      villainX - FIGHT_CONFIG.minSeparation
+    );
+  }
+
+  playPunchMotion() {
+    this.scene.tweens.add({
+      targets: this.sprite,
+      angle: 12,
+      duration: 60,
+      yoyo: true,
+      ease: 'Quad.easeOut'
+    });
+  }
+
+  takeDamage(damage) {
+    this.health = Math.max(0, this.health - damage);
+
+    // White flash
+    this.sprite.setTintFill(0xffffff);
+    this.scene.time.delayedCall(100, () => {
+      this.sprite.clearTint();
+    });
+
+    // Knockback velocity and stun
+    this.isStunned = true;
+    const knockbackVelocity = -(FIGHT_CONFIG.knockbackDistance / (FIGHT_CONFIG.knockbackDuration / 1000));
+    this.sprite.setVelocityX(knockbackVelocity);
+
+    this.scene.time.delayedCall(FIGHT_CONFIG.knockbackDuration, () => {
+      if (this.isStunned) {
+        this.sprite.setVelocityX(0);
+      }
+    });
+
+    this.scene.time.delayedCall(FIGHT_CONFIG.stunDuration, () => {
+      this.isStunned = false;
+    });
   }
 }

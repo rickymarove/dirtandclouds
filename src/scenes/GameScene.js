@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import Hero from '../entities/Hero.js';
 import Villain from '../entities/Villain.js';
 import dialogueLines from '../data/dialogue.js';
+import { FIGHT_CONFIG } from '../data/fightConfig.js';
+import { playPunch, playHit, playWin, playLose } from '../utils/audio.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -13,6 +15,7 @@ export default class GameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, 2400, 600);
     this.cameras.main.setBounds(0, 0, 2400, 600);
     this.cameras.main.setBackgroundColor('#87ceeb');
+    this.cameras.main.fadeIn(300, 0, 0, 0);
 
     // 2. Parallax clouds (Depth 0, scrollFactor 0.5)
     this.clouds = [];
@@ -71,12 +74,17 @@ export default class GameScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.hero.sprite, true, 0.08, 0.08);
 
     // 8. State machine setup
-    this.state = 'explore'; // 'explore' | 'dialogue' | 'fight'
+    this.state = 'explore'; // 'explore' | 'dialogue' | 'fight' | 'won' | 'lost'
     this.dialogueTriggered = false;
     this.dialogueInputLocked = false;
     this.dialogueIndex = 0;
     this.isTyping = false;
     this.typewriterTimer = null;
+
+    // Fight state properties
+    this.fightIntroActive = false;
+    this.fightSpaceLocked = false;
+    this.fightBanner = null;
 
     // 9. Dialogue UI (fixed viewport on the dirt at y = 492, h = 80)
     this.dialogueBox = this.add.rectangle(400, 532, 720, 80, 0x101018, 0.9)
@@ -104,7 +112,55 @@ export default class GameScene extends Phaser.Scene {
       .setDepth(101)
       .setVisible(false);
 
-    // 10. Hint text at bottom of screen (y = 584)
+    // 10. Health Bars UI (depth 105, scrollFactor 0)
+    // Hero Health Bar (Left)
+    this.heroHealthBg = this.add.rectangle(150, 36, 224, 20, 0x111116)
+      .setStrokeStyle(2, 0x444455)
+      .setScrollFactor(0)
+      .setDepth(105)
+      .setVisible(false);
+
+    this.heroLabel = this.add.text(40, 16, 'HERO', {
+      fontSize: '14px',
+      fontStyle: 'bold',
+      color: '#64b5f6',
+      fontFamily: 'sans-serif'
+    })
+      .setScrollFactor(0)
+      .setDepth(106)
+      .setVisible(false);
+
+    this.heroHealthBar = this.add.rectangle(40, 36, 220, 16, 0x4caf50)
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(106)
+      .setVisible(false);
+
+    // Villain Health Bar (Right)
+    this.villainHealthBg = this.add.rectangle(650, 36, 224, 20, 0x111116)
+      .setStrokeStyle(2, 0x444455)
+      .setScrollFactor(0)
+      .setDepth(105)
+      .setVisible(false);
+
+    this.villainLabel = this.add.text(760, 16, 'VILLAIN', {
+      fontSize: '14px',
+      fontStyle: 'bold',
+      color: '#ef5350',
+      fontFamily: 'sans-serif'
+    })
+      .setOrigin(1, 0)
+      .setScrollFactor(0)
+      .setDepth(106)
+      .setVisible(false);
+
+    this.villainHealthBar = this.add.rectangle(760, 36, 220, 16, 0xe53935)
+      .setOrigin(1, 0.5)
+      .setScrollFactor(0)
+      .setDepth(106)
+      .setVisible(false);
+
+    // 11. Hint text at bottom of screen (y = 584)
     this.hintText = this.add.text(400, 584, '[Space] Jump', {
       fontSize: '13px',
       color: '#bbbbbb',
@@ -113,6 +169,9 @@ export default class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(110);
+
+    // 12. Register cleanup handler for restart safety
+    this.events.once('shutdown', this.cleanup, this);
   }
 
   update(time, delta) {
@@ -124,8 +183,10 @@ export default class GameScene extends Phaser.Scene {
       }
     });
 
-    // Idle sway on villain
-    this.villain.update(delta);
+    // Idle sway only during explore and dialogue
+    if (this.state === 'explore' || this.state === 'dialogue') {
+      this.villain.update(delta);
+    }
 
     // State machine update
     if (this.state === 'explore') {
@@ -146,6 +207,35 @@ export default class GameScene extends Phaser.Scene {
 
       if (spacePressed) {
         this.handleDialogueSpace();
+      }
+    } else if (this.state === 'fight') {
+      // Draining JustDown(space) every frame during fight state
+      const spacePressed = Phaser.Input.Keyboard.JustDown(this.keys.space);
+
+      // Discard during intro or initial cooldown
+      if (this.fightIntroActive || this.fightSpaceLocked) {
+        return;
+      }
+
+      // Active fight update
+      this.hero.updateFight(this.keys, delta, this.villain.x);
+      this.villain.updateAI(delta, this.hero.x, () => this.handleVillainHit());
+
+      // Space punch execution
+      if (spacePressed && !this.hero.isStunned && !this.hero.punchCooldown) {
+        this.hero.punchCooldown = true;
+        this.time.delayedCall(FIGHT_CONFIG.heroPunchCooldown, () => {
+          this.hero.punchCooldown = false;
+        });
+
+        playPunch();
+        this.hero.playPunchMotion();
+
+        // Distance-based hit check
+        const dist = Math.abs(this.villain.x - this.hero.x);
+        if (dist <= (FIGHT_CONFIG.minSeparation + FIGHT_CONFIG.heroPunchReach)) {
+          this.handleHeroHit();
+        }
       }
     }
   }
@@ -217,10 +307,8 @@ export default class GameScene extends Phaser.Scene {
 
   handleDialogueSpace() {
     if (this.isTyping) {
-      // First Space press finishes the line instantly
       this.finishTypingCurrentLine();
     } else {
-      // Second Space press advances to next line
       this.dialogueIndex++;
       if (this.dialogueIndex < dialogueLines.length) {
         this.startTypingLine();
@@ -236,12 +324,30 @@ export default class GameScene extends Phaser.Scene {
     this.speakerText.setVisible(false);
     this.dialogueContentText.setVisible(false);
 
-    // Switch to fight state
+    this.startFight();
+  }
+
+  startFight() {
     this.state = 'fight';
+
+    // Reset rotations to 0 for both characters
+    this.hero.sprite.rotation = 0;
+    this.villain.sprite.rotation = 0;
+
+    // Show health bars
+    this.heroHealthBg.setVisible(true);
+    this.heroLabel.setVisible(true);
+    this.heroHealthBar.setVisible(true);
+
+    this.villainHealthBg.setVisible(true);
+    this.villainLabel.setVisible(true);
+    this.villainHealthBar.setVisible(true);
+
+    this.updateHealthBars();
     this.updateHint();
 
-    // Display FIGHT banner
-    this.add.text(400, 240, 'FIGHT', {
+    // Show "FIGHT" intro banner
+    this.fightBanner = this.add.text(400, 240, 'FIGHT', {
       fontSize: '64px',
       fontStyle: 'bold',
       color: '#ffeb3b',
@@ -252,6 +358,104 @@ export default class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(100);
+
+    this.fightIntroActive = true;
+    this.fightSpaceLocked = true;
+
+    // 300 ms ignore Space after fight start
+    this.time.delayedCall(FIGHT_CONFIG.spaceCooldownAfterDialogue, () => {
+      this.fightSpaceLocked = false;
+    });
+
+    // 1000 ms intro duration: remove banner, enable attack
+    this.time.delayedCall(FIGHT_CONFIG.fightIntroDuration, () => {
+      if (this.fightBanner) {
+        this.fightBanner.destroy();
+        this.fightBanner = null;
+      }
+      this.fightIntroActive = false;
+      this.villain.aiState = 'APPROACH';
+    });
+  }
+
+  updateHealthBars() {
+    const heroPct = Math.max(0, this.hero.health / FIGHT_CONFIG.heroMaxHealth);
+    this.heroHealthBar.width = 220 * heroPct;
+
+    const villainPct = Math.max(0, this.villain.health / FIGHT_CONFIG.villainMaxHealth);
+    this.villainHealthBar.width = 220 * villainPct;
+  }
+
+  handleHeroHit() {
+    if (this.state !== 'fight') return;
+
+    const willDefeat = (this.villain.health - FIGHT_CONFIG.heroPunchDamage) <= 0;
+
+    if (willDefeat) {
+      playWin();
+    } else {
+      playHit();
+    }
+
+    this.villain.takeDamage(FIGHT_CONFIG.heroPunchDamage);
+    this.cameras.main.shake(FIGHT_CONFIG.screenShakeDuration, FIGHT_CONFIG.screenShakeIntensity);
+    this.updateHealthBars();
+
+    if (willDefeat) {
+      this.state = 'won';
+      this.finishMatch('YOU WIN', '#4caf50');
+    }
+  }
+
+  handleVillainHit() {
+    if (this.state !== 'fight') return;
+
+    const willDefeat = (this.hero.health - FIGHT_CONFIG.villainPunchDamage) <= 0;
+
+    if (willDefeat) {
+      playLose();
+    } else {
+      playHit();
+    }
+
+    this.hero.takeDamage(FIGHT_CONFIG.villainPunchDamage);
+    this.cameras.main.shake(FIGHT_CONFIG.screenShakeDuration, FIGHT_CONFIG.screenShakeIntensity);
+    this.updateHealthBars();
+
+    if (willDefeat) {
+      this.state = 'lost';
+      this.finishMatch('YOU LOSE', '#e53935');
+    }
+  }
+
+  finishMatch(text, color) {
+    // Freeze movement and AI
+    this.hero.sprite.setVelocity(0, 0);
+    this.villain.sprite.setVelocity(0, 0);
+    this.villain.aiState = 'IDLE';
+
+    // Display outcome banner
+    this.add.text(400, 240, text, {
+      fontSize: '64px',
+      fontStyle: 'bold',
+      color: color,
+      stroke: '#000000',
+      strokeThickness: 6,
+      fontFamily: 'sans-serif'
+    })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(110);
+
+    this.hintText.setText('');
+
+    // Wait 1.2s so player absorbs final hit, then fade out and transition to EndScene
+    this.time.delayedCall(1200, () => {
+      this.cameras.main.fadeOut(300, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.scene.start('EndScene', { result: this.state });
+      });
+    });
   }
 
   updateHint() {
@@ -262,5 +466,14 @@ export default class GameScene extends Phaser.Scene {
     } else if (this.state === 'fight') {
       this.hintText.setText('[Space] Punch');
     }
+  }
+
+  cleanup() {
+    this.input.keyboard.removeAllKeys(true);
+    if (this.typewriterTimer) {
+      this.typewriterTimer.remove();
+      this.typewriterTimer = null;
+    }
+    this.tweens.killAll();
   }
 }

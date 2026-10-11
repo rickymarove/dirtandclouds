@@ -6,11 +6,21 @@ export default class BootScene extends Phaser.Scene {
   }
 
   create() {
-    this.createDirtTexture();
-    this.createCloudTexture();
-    this.createTreeTexture();
-    this.createHeroTexture();
-    this.createVillainTexture();
+    if (!this.textures.exists('dirt')) {
+      this.createDirtTexture();
+    }
+    if (!this.textures.exists('cloud')) {
+      this.createCloudTexture();
+    }
+    if (!this.textures.exists('tree')) {
+      this.createTreeTexture();
+    }
+    if (!this.textures.exists('hero')) {
+      this.createHeroTexture();
+    }
+    if (!this.textures.exists('villain')) {
+      this.createVillainTexture();
+    }
 
     this.scene.start('GameScene');
   }
