@@ -10,6 +10,7 @@ export default class BootScene extends Phaser.Scene {
     this.createCloudTexture();
     this.createTreeTexture();
     this.createHeroTexture();
+    this.createVillainTexture();
 
     this.scene.start('GameScene');
   }
@@ -115,6 +116,44 @@ export default class BootScene extends Phaser.Scene {
         B: '#1976d2',
         P: '#263238',
         F: '#111111'
+      }
+    });
+  }
+
+  createVillainTexture() {
+    const data = [
+      '.....HHHHH.....',
+      '....HHHHHHH....',
+      '....HHSSSHH....',
+      '....SESSSES....',
+      '....SSSSSSS....',
+      '.....SSSSS.....',
+      '...SSSSSSSSS...',
+      '..SSSSSSSSSSS..',
+      '..SSSSSSSSSSS..',
+      '.SSSSSSSSSSSSS.',
+      '.SSSSSSSSSSSSS.',
+      '..BBBBBBBBBBB..',
+      '..RRRRRRRRRRR..',
+      '..RRRR...RRRR..',
+      '..RRRR...RRRR..',
+      '..RRRR...RRRR..',
+      '..FFFF...FFFF..',
+      '.FFFFF...FFFFF.',
+      '.FFFFF...FFFFF.'
+    ];
+
+    this.textures.generate('villain', {
+      data,
+      pixelWidth: 4,
+      pixelHeight: 4,
+      palette: {
+        H: '#212121',
+        S: '#e0a97a',
+        E: '#111111',
+        R: '#8b1e1e',
+        B: '#263238',
+        F: '#1a1a1a'
       }
     });
   }
